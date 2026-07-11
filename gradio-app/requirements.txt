@@ -1,0 +1,4 @@
+gradio
+anthropic
+requests
+python-dotenv
