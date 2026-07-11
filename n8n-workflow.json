@@ -1,0 +1,282 @@
+{
+  "name": "ValuSwap-VLYO - Claude Vision + Telegram",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "b472bc0a-18bf-487b-ac92-0f909f0a6d09",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -992,
+        -80
+      ],
+      "webhookId": "7eca0a35-3fea-4163-adfb-c8109532c8aa",
+      "credentials": {
+        "telegramApi": {
+          "id": "aC1mMEFJZU8SinoC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{ $json.message.photo[$json.message.photo.length - 1].file_id }}",
+        "additionalFields": {}
+      },
+      "id": "1df69d64-3f3c-4f91-946a-5c2e24e804ce",
+      "name": "Get Photo",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -768,
+        -80
+      ],
+      "webhookId": "c7c34a09-8538-439d-aeb7-4d7a37416023",
+      "credentials": {
+        "telegramApi": {
+          "id": "aC1mMEFJZU8SinoC",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "YOUR_ANTHROPIC_API_KEY"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 500,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [\n        { \"type\": \"image\", \"source\": { \"type\": \"base64\", \"media_type\": \"image/jpeg\", \"data\": \"{{ $json.base64 }}\" } },\n        { \"type\": \"text\", \"text\": \"Bu şəkildəki məhsulu təyin et: ad, kateqoriya, təxmini vəziyyət və AZN qiyməti. Yalnız JSON formatında cavab ver, başqa heç nə yazma: {\\\"name\\\":\\\"..\\\",\\\"category\\\":\\\"..\\\",\\\"condition\\\":\\\"..\\\",\\\"price_azn\\\":0}\" }\n      ]\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "89f5bd62-074d-42a4-b0e3-0faa1a46af16",
+      "name": "Claude Vision",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -288,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Claude cavabından JSON çıxar\nconst raw = $input.first().json.content[0].text;\nconst cleaned = raw.replace(/```json|```/g, '').trim();\nlet parsed;\ntry {\n  parsed = JSON.parse(cleaned);\n} catch (e) {\n  throw new Error('Claude cavabı JSON formatında deyil: ' + raw);\n}\nreturn [{ json: parsed }];"
+      },
+      "id": "b37cdc8b-8de1-4405-8e45-81813466f38b",
+      "name": "Parse JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -16,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/products",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"owner_telegram_id\": \"{{ $('Telegram Trigger').item.json.message.from.id }}\",\n  \"name\": \"{{ $json.name }}\",\n  \"category\": \"{{ $json.category }}\",\n  \"condition\": \"{{ $json.condition }}\",\n  \"price_azn\": {{ $json.price_azn }}\n}",
+        "options": {}
+      },
+      "id": "f13e10e3-4073-428f-8375-4fd9cfbc2b69",
+      "name": "POST /products",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        192,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "=✅ Məhsulunuz əlavə olundu: {{ $json.product_name }} – {{ $json.product_price }} AZN\n\n🔄 Uyğun təkliflər:\n{{ $json.match_summary }}",
+        "additionalFields": {}
+      },
+      "id": "95082ee7-0472-4627-89d7-6aa6dfb97ad5",
+      "name": "Təsdiq Mesajı",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        848,
+        -80
+      ],
+      "webhookId": "4bf431cf-d6d4-40bc-8028-ac32482dfe96",
+      "credentials": {
+        "telegramApi": {
+          "id": "aC1mMEFJZU8SinoC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst base64 = buffer.toString('base64');\nreturn [{ json: { base64: base64 } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -528,
+        -80
+      ],
+      "id": "3702ba47-b533-4192-b4bb-33ce61db2b77",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "url": "=http://host.docker.internal:8000/match/{{ $json.id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        416,
+        -80
+      ],
+      "id": "4637a124-00cb-4c85-b16a-e1b7a3e904a3",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const matches = $input.all().map(item => item.json);\nconst original = $('POST /products').first().json;\n\nlet matchText = \"Uyğun təklif tapılmadı.\";\nif (matches.length > 0) {\n  const top = matches[0];\n  matchText = matches.slice(0, 3).map(m => \n    `• ${m.name} — ${m.price_azn} AZN (bənzərlik: ${Math.round(m.similarity_score * 100)}%, ID: ${m.product_id})`\n  ).join(\"\\n\");\n  matchText += `\\n\\n💡 Təklif etmək üçün: /trade-offer məhsul ID-lərinizi (${original.id} və ${top.product_id}) admin panelinə göndərin.`;\n}\n\nreturn [{\n  json: {\n    product_name: original.name,\n    product_price: original.price_azn,\n    match_summary: matchText\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        -80
+      ],
+      "id": "aa47a9be-10a9-41c0-bf23-7da26faf0a3a",
+      "name": "Format Matches"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Photo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Photo": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Vision": {
+      "main": [
+        [
+          {
+            "node": "Parse JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse JSON": {
+      "main": [
+        [
+          {
+            "node": "POST /products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST /products": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Claude Vision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Format Matches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Matches": {
+      "main": [
+        [
+          {
+            "node": "Təsdiq Mesajı",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "d361d6a1-6c1a-4f35-9f1a-63925bf15920",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "33d3118021c86740b1a15c617d0d9d55d063df19d7374e00a1b8953c3734f20d"
+  },
+  "id": "spZWWJ9fdqZpNQ4I",
+  "tags": []
+}
